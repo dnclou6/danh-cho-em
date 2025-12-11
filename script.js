@@ -625,6 +625,12 @@ function createDotsAnimation({ messages, images, onComplete }) {
   let imageCanvas = null;
   let imageCtx = null;
   let dotsOpacity = 1.0; // Opacity của dots để làm mờ khi hiển thị ảnh
+  // Biến phục vụ crossfade giữa các ảnh
+  let previousImage = null;
+  let previousImageOpacity = 0;
+  let previousImageScale = 1.02;
+  // Biến tải ảnh tiếp theo để tránh giật
+  let pendingImage = null;
 
   // Tạo canvas overlay để hiển thị ảnh
   function initImageCanvas() {
@@ -646,10 +652,27 @@ function createDotsAnimation({ messages, images, onComplete }) {
 
   function transitionToImage(imageSrc) {
     if (!imageCanvas) initImageCanvas();
-    imageOpacity = 0; // Reset opacity để fade in
-    imageScale = 1.1; // Bắt đầu zoom in một chút để tạo hiệu ứng
-    currentImage = new Image();
-    currentImage.src = imageSrc;
+    // Đợi ảnh tải xong rồi mới crossfade để tránh giật
+    pendingImage = new Image();
+    pendingImage.onload = () => {
+      // Đẩy ảnh hiện tại sang previous để crossfade
+      previousImage = currentImage;
+      previousImageOpacity = 0.5;
+      previousImageScale = 1.02;
+
+      // Gán ảnh mới
+      currentImage = pendingImage;
+      pendingImage = null;
+
+      // Reset hiệu ứng cho ảnh mới
+      imageOpacity = 0;
+      imageScale = 1.05;
+    };
+    pendingImage.onerror = () => {
+      pendingImage = null;
+    };
+    pendingImage.src = imageSrc;
+
     // Làm mờ dots khi bắt đầu hiển thị ảnh
     dotsOpacity = 0.1;
   }
@@ -934,50 +957,71 @@ function createDotsAnimation({ messages, images, onComplete }) {
     // Vẽ ảnh nếu đang ở state images
     if (currentState === 'images' && imageCanvas && imageCtx) {
       if (currentImage && currentImage.complete) {
-        // Fade in ảnh và zoom effect
+        // Fade in ảnh mới
         if (imageOpacity < 1) {
-          imageOpacity = Math.min(1, imageOpacity + 0.05); // Fade in nhanh hơn
+          imageOpacity = Math.min(1, imageOpacity + 0.025);
         }
         // Zoom out từ 1.1 về 1.0 để tạo hiệu ứng mượt
         if (imageScale > 1.0) {
-          imageScale = Math.max(1.0, imageScale - 0.01);
+          imageScale = Math.max(1.0, imageScale - 0.006);
+        }
+
+        // Làm mờ ảnh trước (crossfade)
+        if (previousImage && previousImage.complete && previousImageOpacity > 0) {
+          previousImageOpacity = Math.max(0, previousImageOpacity - 0.03);
+          previousImageScale = Math.min(1.08, previousImageScale + 0.003);
+        } else {
+          previousImage = null;
         }
         
         imageCtx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
-        imageCtx.globalAlpha = imageOpacity;
         imageCtx.fillStyle = 'rgba(0, 0, 0, 0.5)'; // Nền tối hơn để ảnh nổi bật
         imageCtx.fillRect(0, 0, imageCanvas.width, imageCanvas.height);
-        
-        // Tính toán kích thước ảnh để fit màn hình với zoom effect
-        const maxWidth = imageCanvas.width * 0.9;
-        const maxHeight = imageCanvas.height * 0.9;
-        let imgWidth = currentImage.width;
-        let imgHeight = currentImage.height;
-        const aspect = imgWidth / imgHeight;
-        
-        if (imgWidth > maxWidth) {
-          imgWidth = maxWidth;
-          imgHeight = imgWidth / aspect;
+
+        // Hàm vẽ 1 ảnh với scale và opacity
+        const drawImageWithScale = (img, scale, opacity) => {
+          if (!img || !img.complete) return;
+          imageCtx.globalAlpha = opacity;
+
+          const maxWidth = imageCanvas.width * 0.9;
+          const maxHeight = imageCanvas.height * 0.9;
+          let imgWidth = img.width;
+          let imgHeight = img.height;
+          const aspect = imgWidth / imgHeight;
+          
+          if (imgWidth > maxWidth) {
+            imgWidth = maxWidth;
+            imgHeight = imgWidth / aspect;
+          }
+          if (imgHeight > maxHeight) {
+            imgHeight = maxHeight;
+            imgWidth = imgHeight * aspect;
+          }
+          
+          const scaledWidth = imgWidth * scale;
+          const scaledHeight = imgHeight * scale;
+          const x = (imageCanvas.width - scaledWidth) / 2;
+          const y = (imageCanvas.height - scaledHeight) / 2;
+
+          imageCtx.drawImage(img, x, y, scaledWidth, scaledHeight);
+          imageCtx.globalAlpha = 1;
+        };
+
+        // Vẽ ảnh trước (mờ dần)
+        if (previousImage) {
+          drawImageWithScale(previousImage, previousImageScale, previousImageOpacity);
         }
-        if (imgHeight > maxHeight) {
-          imgHeight = maxHeight;
-          imgWidth = imgHeight * aspect;
-        }
-        
-        // Áp dụng zoom effect
-        const scaledWidth = imgWidth * imageScale;
-        const scaledHeight = imgHeight * imageScale;
-        const x = (imageCanvas.width - scaledWidth) / 2;
-        const y = (imageCanvas.height - scaledHeight) / 2;
-        
-        imageCtx.drawImage(currentImage, x, y, scaledWidth, scaledHeight);
-        imageCtx.globalAlpha = 1;
+        // Vẽ ảnh mới
+        drawImageWithScale(currentImage, imageScale, imageOpacity);
       }
     } else if (currentState !== 'images' && imageCanvas) {
       // Fade out và ẩn canvas khi không ở state images
       if (imageOpacity > 0) {
         imageOpacity = Math.max(0, imageOpacity - 0.05);
         imageScale = Math.min(1.1, imageScale + 0.01); // Zoom in khi fade out
+        previousImage = null;
+        previousImageOpacity = 0;
+        previousImageScale = 1.02;
         imageCtx.clearRect(0, 0, imageCanvas.width, imageCanvas.height);
         if (currentImage && currentImage.complete) {
           imageCtx.globalAlpha = imageOpacity;
