@@ -8,45 +8,23 @@ const countdownData = {
   music: dynamicData.backgroundMusic
 };
 const defaultMusicFallback = [];
-// Dùng ảnh trong thư mục album cho slideshow
-const albumImagePool = [
-  'album/att.5TOYryWA27PwW8FBVUD_D8JRyAjaB5QCPPQeII5K-so.JPG',
-  'album/att.5Zb07iSQciNRlZaBpqEd4VLbObUae5wze-7-WcKXlUA.JPG',
-  'album/att.6q6DFQD8Tvu6NyZafgGDWy8nUblxePkPTe0Nhro-om0.JPG',
-  'album/att.CNMNQU9rt09iqENUz0h41784bNg2CUboPb8Le-zmNek.JPG',
-  'album/att.Ctot0QCtMRatSEUGOLxIUlIHwPQchURqoJ5xBnCXrS0.JPG'
-];
-// Dùng tất cả ảnh trong thư mục img cho phần cuối (falling images)
-const localImagePool = [
-  'img/att.SRNUMR_NaSJw0NIN5pmpwQtYZzlmMT_MsJameMGCE04.JPG',
-  'img/att.dXGzARDhOBUfkrUj0s56XI_zizWoBtgD7WlHgSkLMv4.JPG',
-  'img/att.Ndl1n2L2M36aQIn_iCvs6oUqolDOI1o9gY7mKqhMT38.JPG',
-  'img/att.QTp2CZVGomMX_fbwUc9pxvFtMZSA8i2R6SQJ9U5ZPpI.JPG',
-  'img/att.5TOYryWA27PwW8FBVUD_D8JRyAjaB5QCPPQeII5K-so.JPG',
-  'img/att.ump5_UZ_9_kJA5Yma-z2aCucEGR6_Bk-bhyTaErMhFU.JPG',
-  'img/att.yVJnRTuJEYMcFeF4HIqn0Ivs0BaeTBGmsCL1pUGuQaw.JPG',
-  'img/att.cyi0aHiFXGEeKwaAd-uSombAom-hajm3Arr4QzZ0VX8.JPG',
-  'img/att.VIocDinrkHQz9hGIWnHgQxDK9Slp_vR9qFreRYhdlOg.JPG',
-  'img/att.vtjOWyw5b3i-dEx68M9eRgYIE8u-lzeLkNYcnDf_1xs.JPG',
-  'img/att.sch2bOWWPCjoWa5lCP6a_0-YZzLIIvbP3UlBcxaf5eQ.JPG',
-  'img/att.CNMNQU9rt09iqENUz0h41784bNg2CUboPb8Le-zmNek.JPG',
-  'img/att.xQCvCwM7WvYCoWfYRA-QKMAkEtkw3xY-0N_k5bl_JCQ.JPG',
-  'img/att.H1YSyKkdpsAIftBZC4X1b6eSqKjayE--6t3_45QHhB8.JPG',
-  'img/att.Ctot0QCtMRatSEUGOLxIUlIHwPQchURqoJ5xBnCXrS0.JPG',
-  'img/att.6q6DFQD8Tvu6NyZafgGDWy8nUblxePkPTe0Nhro-om0.JPG',
-  'img/att.ZtulgvnSWFb_jFsOdhTUXCYhv7VOoRkyeGuJNZF1gjI.JPG',
-  'img/att.HDd9nd8h-tbgTQkNYSke5SvFhOB6CFLGQD4tnWjXvl4.JPG',
-  'img/att.KT146s72npCKOqKEvA5p8df5mhj9c0--VP1E3cVinfA.JPG',
-  'img/att.e50-U4oYFiP0DtjVQwnQpzXydrjq7VaNtuam6-y51zI.JPG',
-  'img/att.5Zb07iSQciNRlZaBpqEd4VLbObUae5wze-7-WcKXlUA.JPG',
-  'img/att.gEVsOt9Jm0wOFgZd9tNCERdZAs00kwaBd8-_ol2f_OM.JPG',
-  'img/att.jnVPhSZLNms1vW5GlIv3y41nGFnviciD4sA3ZPo64jQ.JPG',
-  'img/att.fUFsscfi4F0SaDbxNkB1KXqn2fjMyH1ML-TIceuxTtc.JPG',
-  'img/att.XjyauUv8TArcZxqOO2WQQARhXPrPuWgPRWCJ8V9UTF4.JPG',
-  'img/att.VtmfoD98MIrMkCgwpaT3qCMvYOffkOABqSgxnIXNaX0.JPG',
-  'img/att.cYrxu-bAGFpS9ikNmh1VZiisq7vro-GTpjrCAYHkPW4.JPG',
-  'img/att.rfXQpiuNBYVpGLD34QsO87Mml_-M0uT6sgi4kb3b1Ss.JPG'
-];
+
+// Function để tự động load tất cả ảnh từ folder (từ file index.json)
+async function loadImagesFromFolder(folderPath) {
+  try {
+    const response = await fetch(`${folderPath}/index.json`);
+    if (response.ok) {
+      const files = await response.json();
+      if (Array.isArray(files) && files.length > 0) {
+        return files.map(file => `${folderPath}/${file}`);
+      }
+    }
+  } catch (e) {
+    console.warn(`Không thể load index từ ${folderPath}:`, e);
+  }
+  return [];
+}
+
 let backgroundAudio = null;
 
 function getSafeAreaInset(side) {
@@ -1743,18 +1721,22 @@ function createHeartFinish({ text }) {
   setTimeout(forceRetry, 800);
  }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // Bật nền động chấm tinh tế
   createMatrixBackground({ text: '•' });
+
+  // Tự động load tất cả ảnh từ folder (từ file index.json)
+  const albumImagePool = await loadImagesFromFolder('album');
+  const localImagePool = await loadImagesFromFolder('img');
 
   // 1. Khởi tạo animation và nhận về đối tượng điều khiển (có chứa hàm start)
   const dotsAnimationController = createDotsAnimation({
     messages: countdownData.messages,
-    images: albumImagePool, // Dùng ảnh từ folder album cho slideshow
+    images: albumImagePool, // Tự động load tất cả ảnh từ folder album
     onComplete: () => {
       document.getElementById('dots-canvas-container').style.display = 'none';
       createHeartFinish({ text: countdownData.finalText });
-      createFallingWords({ images: localImagePool }); // Dùng ảnh từ folder img cho phần cuối
+      createFallingWords({ images: localImagePool }); // Tự động load tất cả ảnh từ folder img
     }
   });
 
