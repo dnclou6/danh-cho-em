@@ -1058,24 +1058,72 @@ function createDotsAnimation({ messages, images, onComplete }) {
 
   // Preload images - chỉ thêm ảnh load thành công
   const loadedImages = [];
-  const imagePromises = imagePool.map((src) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        // Chỉ thêm vào danh sách nếu load thành công
-        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-          loadedImages.push(img);
-        }
-        resolve(img);
-      };
-      img.onerror = () => {
-        // Bỏ qua ảnh không load được (ví dụ: HEIC không được hỗ trợ)
-        console.warn(`Không thể load ảnh: ${src}`);
-        resolve(null);
-      };
-      img.src = src;
-    });
-  });
+  
+  // Function để load ảnh, tự động convert HEIC nếu cần
+  async function loadImageWithHeicSupport(src) {
+    // Kiểm tra nếu là file HEIC/HEIF
+    const isHeic = /\.(heic|heif)$/i.test(src);
+    
+    if (isHeic && typeof heic2any !== 'undefined') {
+      try {
+        // Fetch file HEIC
+        const response = await fetch(src);
+        const blob = await response.blob();
+        
+        // Convert HEIC sang JPG
+        const convertedBlob = await heic2any({
+          blob: blob,
+          toType: 'image/jpeg',
+          quality: 0.92
+        });
+        
+        // heic2any trả về array, lấy phần tử đầu tiên
+        const jpegBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+        
+        // Tạo URL từ blob đã convert
+        const url = URL.createObjectURL(jpegBlob);
+        
+        // Load ảnh từ URL đã convert
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+              loadedImages.push(img);
+            }
+            resolve(img);
+          };
+          img.onerror = () => {
+            console.warn(`Không thể load ảnh HEIC đã convert: ${src}`);
+            URL.revokeObjectURL(url); // Giải phóng memory
+            resolve(null);
+          };
+          img.src = url;
+        });
+      } catch (error) {
+        console.warn(`Lỗi convert HEIC ${src}:`, error);
+        return null;
+      }
+    } else {
+      // Load ảnh bình thường cho các định dạng khác
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            loadedImages.push(img);
+          }
+          resolve(img);
+        };
+        img.onerror = () => {
+          console.warn(`Không thể load ảnh: ${src}`);
+          resolve(null);
+        };
+        img.src = src;
+      });
+    }
+  }
+  
+  // Load tất cả ảnh (bao gồm convert HEIC)
+  const imagePromises = imagePool.map(src => loadImageWithHeicSupport(src));
   
   // Đợi tất cả ảnh load xong (hoặc fail) trước khi tiếp tục
   await Promise.all(imagePromises);
