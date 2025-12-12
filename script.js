@@ -1039,28 +1039,53 @@ function createDotsAnimation({ messages, images, onComplete }) {
   return { start };
 }
 
- function createFallingWords({ images }) {
+ async function createFallingWords({ images }) {
   const canvas = document.getElementById('falling-words-canvas');
   const ctx = canvas.getContext('2d');
 
   let width = (canvas.width = window.innerWidth);
   let height = (canvas.height = window.innerHeight);
 
-  // Dùng ảnh mẫu nếu chưa có dữ liệu
-  const fallbackImages = localImagePool;
-  const imagePool = images && images.length ? images : fallbackImages;
+  // Dùng ảnh được truyền vào, nếu không có thì dùng mảng rỗng
+  const imagePool = images && Array.isArray(images) && images.length > 0 ? images : [];
+  
+  console.log('createFallingWords called with', imagePool.length, 'images');
+  
+  if (imagePool.length === 0) {
+    console.warn('Không có ảnh để hiển thị trong phần falling images');
+    return;
+  }
 
-  // Preload images
+  // Preload images - chỉ thêm ảnh load thành công
   const loadedImages = [];
-  imagePool.forEach((src) => {
-    const img = new Image();
-    img.src = src;
-    loadedImages.push(img);
+  const imagePromises = imagePool.map((src) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        // Chỉ thêm vào danh sách nếu load thành công
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+          loadedImages.push(img);
+        }
+        resolve(img);
+      };
+      img.onerror = () => {
+        // Bỏ qua ảnh không load được (ví dụ: HEIC không được hỗ trợ)
+        console.warn(`Không thể load ảnh: ${src}`);
+        resolve(null);
+      };
+      img.src = src;
+    });
   });
+  
+  // Đợi tất cả ảnh load xong (hoặc fail) trước khi tiếp tục
+  await Promise.all(imagePromises);
+  
+  console.log(`Đã load thành công ${loadedImages.length}/${imagePool.length} ảnh`);
 
   let sprites = [];
-  let usedImageIndices = []; // Mảng theo dõi các index ảnh đã được sử dụng
-  const maxSprites = Math.min(14, imagePool.length); // số lượng item rơi, không vượt quá số ảnh có sẵn
+  let usedImageIndices = []; // Mảng theo dõi các index ảnh đã được sử dụng trong lượt hiện tại
+  // Tăng số lượng ảnh rơi cùng lúc - không giới hạn, nhưng giới hạn ở 50 để tránh lag
+  const maxSprites = Math.min(50, imagePool.length * 3); // Rơi nhiều ảnh cùng lúc
 
   // Tạo overlay phóng to ảnh
   let zoomOverlay = document.getElementById('image-zoom-overlay');
@@ -1192,13 +1217,14 @@ function createDotsAnimation({ messages, images, onComplete }) {
 
   function resetSprite(sprite) {
     // Chọn ảnh chưa được sử dụng
-    const availableIndices = loadedImages
+    let availableIndices = loadedImages
       .map((_, index) => index)
       .filter(index => !usedImageIndices.includes(index));
     
-    // Nếu không còn ảnh nào chưa dùng, không spawn
+    // Nếu không còn ảnh nào chưa dùng, reset và lặp lại từ đầu
     if (availableIndices.length === 0) {
-      return false;
+      usedImageIndices = []; // Reset để lặp lại từ đầu
+      availableIndices = loadedImages.map((_, index) => index); // Lấy tất cả ảnh lại
     }
     
     // Chọn ngẫu nhiên một ảnh chưa được dùng
@@ -1206,8 +1232,12 @@ function createDotsAnimation({ messages, images, onComplete }) {
     const imgIndex = availableIndices[randomIndex];
     
     const img = loadedImages[imgIndex];
+    // Kiểm tra ảnh có hợp lệ không
+    if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) {
+      return false; // Bỏ qua ảnh không hợp lệ
+    }
     const baseSize = Math.min(width, height) * 0.18; // tăng kích thước ảnh rơi
-    const aspect = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1;
+    const aspect = img.naturalWidth / img.naturalHeight;
     const displayWidth = aspect >= 1 ? baseSize : baseSize * aspect;
     const displayHeight = aspect >= 1 ? baseSize / aspect : baseSize;
 
@@ -1268,15 +1298,17 @@ function createDotsAnimation({ messages, images, onComplete }) {
   const animate = () => {
     ctx.clearRect(0, 0, width, height);
 
-    // Chỉ spawn nếu còn ảnh chưa được dùng
-    const availableIndices = loadedImages
-      .map((_, index) => index)
-      .filter(index => !usedImageIndices.includes(index));
+    // Spawn nhiều ảnh liên tục - tăng tốc độ spawn
+    // Spawn nhiều ảnh cùng lúc để có nhiều ảnh rơi
+    const spawnChance = 0.85; // Tăng xác suất spawn (từ 0.95 xuống 0.85)
+    const maxSpawnPerFrame = 3; // Spawn tối đa 3 ảnh mỗi frame
     
-    if (sprites.length < maxSprites && availableIndices.length > 0 && Math.random() > 0.95) {
-      const newSprite = {};
-      if (resetSprite(newSprite)) {
-        sprites.push(newSprite);
+    for (let i = 0; i < maxSpawnPerFrame && sprites.length < maxSprites; i++) {
+      if (Math.random() > spawnChance) {
+        const newSprite = {};
+        if (resetSprite(newSprite)) {
+          sprites.push(newSprite);
+        }
       }
     }
 
@@ -1340,8 +1372,14 @@ function createDotsAnimation({ messages, images, onComplete }) {
       ctx.globalAlpha = currentOpacity;
       ctx.shadowColor = sprite === draggedSprite ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.55)';
       ctx.shadowBlur = sprite === draggedSprite ? 18 : 10;
-      if (sprite.image?.complete) {
-        ctx.drawImage(sprite.image, sprite.x, sprite.y, sprite.width, sprite.height);
+      // Chỉ vẽ ảnh nếu đã load thành công và không bị lỗi
+      if (sprite.image && sprite.image.complete && sprite.image.naturalWidth > 0 && sprite.image.naturalHeight > 0) {
+        try {
+          ctx.drawImage(sprite.image, sprite.x, sprite.y, sprite.width, sprite.height);
+        } catch (e) {
+          // Bỏ qua lỗi vẽ ảnh (ảnh có thể bị lỗi)
+          console.warn('Lỗi vẽ ảnh:', e);
+        }
       }
       ctx.restore();
 
@@ -1728,15 +1766,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Tự động load tất cả ảnh từ folder (từ file index.json)
   const albumImagePool = await loadImagesFromFolder('album');
   const localImagePool = await loadImagesFromFolder('img');
+  
+  console.log('Album images loaded:', albumImagePool.length);
+  console.log('Local images loaded:', localImagePool.length);
 
   // 1. Khởi tạo animation và nhận về đối tượng điều khiển (có chứa hàm start)
   const dotsAnimationController = createDotsAnimation({
     messages: countdownData.messages,
     images: albumImagePool, // Tự động load tất cả ảnh từ folder album
-    onComplete: () => {
+    onComplete: async () => {
       document.getElementById('dots-canvas-container').style.display = 'none';
       createHeartFinish({ text: countdownData.finalText });
-      createFallingWords({ images: localImagePool }); // Tự động load tất cả ảnh từ folder img
+      console.log('Creating falling words with images:', localImagePool.length);
+      await createFallingWords({ images: localImagePool }); // Tự động load tất cả ảnh từ folder img
     }
   });
 

@@ -9,7 +9,12 @@
 const fs = require('fs');
 const path = require('path');
 
-const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.JPG', '.JPEG', '.PNG', '.GIF', '.WEBP'];
+const imageExtensions = [
+  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg',
+  '.heic', '.heif', '.avif', '.tiff', '.tif',
+  '.JPG', '.JPEG', '.PNG', '.GIF', '.WEBP', '.BMP', '.SVG',
+  '.HEIC', '.HEIF', '.AVIF', '.TIFF', '.TIF'
+];
 
 function getImageFiles(folderPath) {
   try {
