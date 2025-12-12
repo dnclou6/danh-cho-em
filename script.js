@@ -782,8 +782,14 @@ function createDotsAnimation({ messages, images, onComplete }) {
       }
     } else if (currentState === 'message') {
       if (currentTextIndex < messages.length) {
-        transitionToText(messages[currentTextIndex]);
-        timeoutId = setTimeout(nextStep, 6000); // tăng thời gian dừng giữa các thông điệp
+        const text = messages[currentTextIndex];
+        transitionToText(text);
+        // Thời gian hiển thị dựa trên độ dài chữ: ngắn -> nhanh, dài -> lâu hơn
+        const baseMs = 2800; // tối thiểu ~2.8s
+        const perCharMs = 80; // thêm 80ms mỗi ký tự
+        const maxMs = 7000; // giới hạn tối đa 7s để không quá lâu
+        const duration = Math.min(maxMs, baseMs + text.length * perCharMs);
+        timeoutId = setTimeout(nextStep, duration);
       } else {
         // Sau khi hết messages, chuyển sang final
         startFinalTransition();
@@ -1609,7 +1615,7 @@ function createHeartFinish({ text }) {
     // Vẽ ảnh trái tim từ folder anh-ket-thuc
     if (heartImageLoaded && heartImage.complete && heartImage.naturalWidth && heartImage.naturalHeight) {
       const heartCenterX = width / 2;
-      const heartCenterY = height / 2 - height * 0.1;
+      const heartCenterY = height / 2; // Chính giữa màn hình
       
       // Tính kích thước ảnh dựa trên scale, giữ nguyên tỷ lệ khung hình
       const baseImageSize = currentScale * 35; // Kích thước cơ sở
@@ -1826,6 +1832,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('dots-canvas-container').style.display = 'none';
       createHeartFinish({ text: countdownData.finalText });
       console.log('Creating falling words with images:', localImagePool.length);
+      // Chờ 1.2s sau khi hiện ảnh kết thúc rồi mới cho ảnh rơi
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       await createFallingWords({ images: localImagePool }); // Tự động load tất cả ảnh từ folder img
     }
   });
