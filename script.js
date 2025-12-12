@@ -656,17 +656,20 @@ function createDotsAnimation({ messages, images, onComplete }) {
     pendingImage = new Image();
     pendingImage.onload = () => {
       // Đẩy ảnh hiện tại sang previous để crossfade
-      previousImage = currentImage;
-      previousImageOpacity = 0.5;
-      previousImageScale = 1.02;
+      // Ảnh trước bắt đầu từ opacity 1.0 (rõ) và sẽ mờ dần
+      if (currentImage && currentImage.complete) {
+        previousImage = currentImage;
+        previousImageOpacity = 1.0; // Bắt đầu từ opacity đầy đủ
+        previousImageScale = 1.0; // Scale bình thường
+      }
 
       // Gán ảnh mới
       currentImage = pendingImage;
       pendingImage = null;
 
-      // Reset hiệu ứng cho ảnh mới
+      // Reset hiệu ứng cho ảnh mới - bắt đầu từ opacity 0 (mờ) và sẽ rõ dần
       imageOpacity = 0;
-      imageScale = 1.05;
+      imageScale = 1.0; // Bắt đầu từ scale bình thường
     };
     pendingImage.onerror = () => {
       pendingImage = null;
@@ -957,19 +960,14 @@ function createDotsAnimation({ messages, images, onComplete }) {
     // Vẽ ảnh nếu đang ở state images
     if (currentState === 'images' && imageCanvas && imageCtx) {
       if (currentImage && currentImage.complete) {
-        // Fade in ảnh mới
+        // Fade in ảnh mới (rõ dần từ 0 lên 1)
         if (imageOpacity < 1) {
-          imageOpacity = Math.min(1, imageOpacity + 0.025);
-        }
-        // Zoom out từ 1.1 về 1.0 để tạo hiệu ứng mượt
-        if (imageScale > 1.0) {
-          imageScale = Math.max(1.0, imageScale - 0.006);
+          imageOpacity = Math.min(1, imageOpacity + 0.03); // Tăng tốc độ fade in
         }
 
-        // Làm mờ ảnh trước (crossfade)
+        // Fade out ảnh trước (mờ dần từ 1 xuống 0)
         if (previousImage && previousImage.complete && previousImageOpacity > 0) {
-          previousImageOpacity = Math.max(0, previousImageOpacity - 0.03);
-          previousImageScale = Math.min(1.08, previousImageScale + 0.003);
+          previousImageOpacity = Math.max(0, previousImageOpacity - 0.04); // Tăng tốc độ fade out
         } else {
           previousImage = null;
         }
@@ -1808,4 +1806,3 @@ function initializeLayoutManager(animationToStart) {
   // Chạy lần đầu
   handleLayoutChange();
 }
-
